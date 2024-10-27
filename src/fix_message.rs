@@ -1,175 +1,91 @@
-use std::collections::hash_map::IntoIter;
 use std::collections::HashMap;
+use crate::execution_report::ExecutionReport;
+use crate::new_order::NewOrder;
+use crate::order_cancel_request::OrderCancelRequest;
+use crate::order_status_request::OrderStatusRequest;
 
-#[derive(Debug)]
-pub struct FixMessage {
-    fields: HashMap<String, String>,
+pub enum FixMessage {
+    NewOrder(NewOrder),
+    ExecutionReport(ExecutionReport),
+    OrderCancelRequest(OrderCancelRequest),
+    OrderStatusRequest(OrderStatusRequest),
+    Unknown,
 }
 
-impl FixMessage {
-    pub const DELIMITER: char = '|';
-    pub const ASSIGNMENT: char = '=';
-
-    pub fn parse(message: &str) -> Self {
-        let mut fields = HashMap::new();
-        for pair in message.split(Self::DELIMITER) {
-            if let Some((key, value)) = pair.split_once(Self::ASSIGNMENT) {
-                fields.insert(key.to_string(), value.to_string());
-            }
-        }
-        FixMessage { fields }
-    }
-
-    pub fn get(&self, tag: &str) -> Option<&String> {
-        self.fields.get(tag)
-    }
+pub fn parse_field<T: std::str::FromStr>(fields: &HashMap<String, String>, tag: &str) -> Result<T, String> {
+    fields.get(tag)
+        .ok_or_else(|| format!("Missing Tag {}", tag))
+        .and_then(|value| value.parse().map_err(|_| format!("Invalid Tag {}", tag)))
 }
 
-impl IntoIterator for FixMessage {
-    type Item = (String, String);
-    type IntoIter = IntoIter<String, String>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.fields.into_iter()
+pub fn parse_field_optional<T: std::str::FromStr>(fields: &HashMap<String, String>, tag: &str) -> Result<Option<T>, String> {
+    match fields.get(tag) {
+        Some(value) => match value.parse() {
+            Ok(parsed_value) => Ok(Some(parsed_value)),
+            Err(_) => Err(format!("Invalid Tag {}", tag)),
+        },
+        None => Ok(None),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
-    fn test_parse() {
-        let message = "8=FIX.4.2|9=12|35=A|49=CLIENT|56=SERVER|10=123|";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_success() {
+        let mut fields = HashMap::new();
+        fields.insert("11".to_string(), "12345".to_string());
 
-        assert_eq!(fix_message.fields.get("8"), Some(&"FIX.4.2".to_string()));
-        assert_eq!(fix_message.fields.get("9"), Some(&"12".to_string()));
-        assert_eq!(fix_message.fields.get("35"), Some(&"A".to_string()));
-        assert_eq!(fix_message.fields.get("49"), Some(&"CLIENT".to_string()));
-        assert_eq!(fix_message.fields.get("56"), Some(&"SERVER".to_string()));
-        assert_eq!(fix_message.fields.get("10"), Some(&"123".to_string()));
+        let result: Result<String, String> = parse_field(&fields, "11");
+        assert_eq!(result.unwrap(), "12345");
     }
 
     #[test]
-    fn test_get() {
-        let message = "8=FIX.4.2|9=12|35=A|49=CLIENT|56=SERVER|10=123|";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_missing_tag() {
+        let fields: HashMap<String, String> = HashMap::new();
 
-        assert_eq!(fix_message.get("8"), Some(&"FIX.4.2".to_string()));
-        assert_eq!(fix_message.get("9"), Some(&"12".to_string()));
-        assert_eq!(fix_message.get("35"), Some(&"A".to_string()));
-        assert_eq!(fix_message.get("49"), Some(&"CLIENT".to_string()));
-        assert_eq!(fix_message.get("56"), Some(&"SERVER".to_string()));
-        assert_eq!(fix_message.get("10"), Some(&"123".to_string()));
-        assert_eq!(fix_message.get("999"), None);
+        let result: Result<String, String> = parse_field(&fields, "11");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Missing Tag 11");
     }
 
     #[test]
-    fn test_parse_empty_message() {
-        let message = "";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_invalid_tag() {
+        let mut fields = HashMap::new();
+        fields.insert("11".to_string(), "abc".to_string());
 
-        assert!(fix_message.fields.is_empty());
+        let result: Result<i32, String> = parse_field(&fields, "11");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid Tag 11");
     }
 
     #[test]
-    fn test_parse_no_delimiters() {
-        let message = "8=FIX.4.2";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_optional_success() {
+        let mut fields = HashMap::new();
+        fields.insert("11".to_string(), "12345".to_string());
 
-        assert_eq!(fix_message.fields.get("8"), Some(&"FIX.4.2".to_string()));
-        assert_eq!(fix_message.fields.len(), 1);
+        let result: Result<Option<String>, String> = parse_field_optional(&fields, "11");
+        assert_eq!(result.unwrap(), Some("12345".to_string()));
     }
 
     #[test]
-    fn test_parse_multiple_delimiters() {
-        let message = "8=FIX.4.2|||9=12||35=A|";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_optional_missing_tag() {
+        let fields: HashMap<String, String> = HashMap::new();
 
-        assert_eq!(fix_message.fields.get("8"), Some(&"FIX.4.2".to_string()));
-        assert_eq!(fix_message.fields.get("9"), Some(&"12".to_string()));
-        assert_eq!(fix_message.fields.get("35"), Some(&"A".to_string()));
-        assert_eq!(fix_message.fields.len(), 3);
+        let result: Result<Option<String>, String> = parse_field_optional(&fields, "11");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
     }
 
     #[test]
-    fn test_parse_empty_fields() {
-        let message = "8=|9=|35=|";
-        let fix_message = FixMessage::parse(message);
+    fn test_parse_field_optional_invalid_tag() {
+        let mut fields = HashMap::new();
+        fields.insert("11".to_string(), "abc".to_string());
 
-        assert_eq!(fix_message.fields.get("8"), Some(&"".to_string()));
-        assert_eq!(fix_message.fields.get("9"), Some(&"".to_string()));
-        assert_eq!(fix_message.fields.get("35"), Some(&"".to_string()));
-        assert_eq!(fix_message.fields.len(), 3);
-    }
-
-    #[test]
-    fn test_get_non_existent_tag() {
-        let message = "8=FIX.4.2|9=12|35=A|49=CLIENT|56=SERVER|10=123|";
-        let fix_message = FixMessage::parse(message);
-
-        assert_eq!(fix_message.get("999"), None);
-    }
-
-    #[test]
-    fn test_into_iterator() {
-        let message = "8=FIX.4.2|9=12|35=A|49=CLIENT|56=SERVER|10=123|";
-        let fix_message = FixMessage::parse(message);
-        let iter = fix_message.into_iter();
-        let mut result = HashMap::new();
-
-        for (key, value) in iter {
-            result.insert(key, value);
-        }
-
-        let expected: HashMap<String, String> = [
-            ("8".to_string(), "FIX.4.2".to_string()),
-            ("9".to_string(), "12".to_string()),
-            ("35".to_string(), "A".to_string()),
-            ("49".to_string(), "CLIENT".to_string()),
-            ("56".to_string(), "SERVER".to_string()),
-            ("10".to_string(), "123".to_string()),
-        ]
-            .iter()
-            .cloned()
-            .collect();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_into_iterator_empty_message() {
-        let message = "";
-        let fix_message = FixMessage::parse(message);
-        let iter = fix_message.into_iter();
-        let mut result = HashMap::new();
-
-        for (key, value) in iter {
-            result.insert(key, value);
-        }
-
-        let expected: HashMap<String, String> = HashMap::new();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_into_iterator_single_field() {
-        let message = "8=FIX.4.2|";
-        let fix_message = FixMessage::parse(message);
-        let iter = fix_message.into_iter();
-        let mut result = HashMap::new();
-
-        for (key, value) in iter {
-            result.insert(key, value);
-        }
-
-        let expected: HashMap<String, String> = [("8".to_string(), "FIX.4.2".to_string())]
-            .iter()
-            .cloned()
-            .collect();
-
-        assert_eq!(result, expected);
+        let result: Result<Option<i32>, String> = parse_field_optional(&fields, "11");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid Tag 11");
     }
 }
