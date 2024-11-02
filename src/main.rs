@@ -15,9 +15,9 @@ use crate::order_status_request::OrderStatusRequest;
 
 fn main() {
     let paths = vec![
-        //"resources/new_order1.txt",
+        "resources/new_order1.txt",
         "resources/execution_report1.txt",
-        //"resources/order_cancel_request1.txt",
+        "resources/order_cancel_request1.txt",
         "resources/order_status_request1.txt"
     ];
 

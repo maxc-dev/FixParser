@@ -14,15 +14,27 @@ pub enum FixMessage {
 
 pub fn parse_field<T: std::str::FromStr>(fields: &HashMap<String, String>, tag: &str) -> Result<T, String> {
     fields.get(tag)
-        .ok_or_else(|| format!("Missing Tag {}", tag))
-        .and_then(|value| value.parse().map_err(|_| format!("Invalid Tag {}", tag)))
+        .ok_or_else(|| {
+            let error_message = format!("Missing Tag {}", tag);
+            eprintln!("{}", error_message);
+            error_message
+        })
+        .and_then(|value| value.parse().map_err(|_| {
+            let error_message = format!("Invalid Tag {}", tag);
+            eprintln!("{}", error_message);
+            error_message
+        }))
 }
 
 pub fn parse_field_optional<T: std::str::FromStr>(fields: &HashMap<String, String>, tag: &str) -> Result<Option<T>, String> {
     match fields.get(tag) {
         Some(value) => match value.parse() {
             Ok(parsed_value) => Ok(Some(parsed_value)),
-            Err(_) => Err(format!("Invalid Tag {}", tag)),
+            Err(_) => {
+                let error_message = format!("Invalid Tag {}", tag);
+                eprintln!("{}", error_message);
+                Err(error_message)
+            },
         },
         None => Ok(None),
     }

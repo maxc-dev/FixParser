@@ -41,7 +41,6 @@ impl FixMessageParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[test]
     fn test_parse_new_order() {
@@ -68,13 +67,13 @@ mod tests {
 
     #[test]
     fn test_parse_execution_report() {
-        let message = "35=8|11=12345|17=1|150=0|39=2|55=XYZ|54=1|38=100|44=50.5|";
+        let message = "35=8|11=12345|17=1|150=0|39=2|55=XYZ|54=1|38=100|44=50.5|37=54321|151=100|14=0|60=20231027-15:48:00.123|";
         let parsed_message = FixMessageParser::parse_message(message);
 
         match parsed_message {
             FixMessage::ExecutionReport(execution_report) => {
                 assert_eq!(execution_report.cl_ord_id, "12345");
-                assert_eq!(execution_report.order_id, "1");
+                assert_eq!(execution_report.order_id, "54321");
                 assert_eq!(execution_report.exec_type, '0');
                 assert_eq!(execution_report.ord_status, '2');
                 assert_eq!(execution_report.symbol, "XYZ");
@@ -88,7 +87,7 @@ mod tests {
 
     #[test]
     fn test_parse_order_cancel_request() {
-        let message = "35=F|11=12345|41=54321|54=1|55=XYZ|";
+        let message = "35=F|11=12345|41=54321|54=1|55=XYZ|60=20231027-15:48:00.123|";
         let parsed_message = FixMessageParser::parse_message(message);
 
         match parsed_message {
@@ -104,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_parse_order_status_request() {
-        let message = "35=H|11=12345|54=1|55=XYZ|";
+        let message = "35=H|11=12345|54=1|55=XYZ|60=20231027-15:48:00.123|";
         let parsed_message = FixMessageParser::parse_message(message);
 
         match parsed_message {
