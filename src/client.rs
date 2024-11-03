@@ -4,6 +4,8 @@ use tokio::io::{self, AsyncBufReadExt};
 
 #[tokio::main]
 async fn main() {
+    const EXIT_WS: &str = "x";
+
     let (mut socket, response) = connect_async("ws://127.0.0.1:8081/ws").await.expect("Failed to connect");
 
     println!("Connected to WebSocket server [{}]. Type messages to send.", response.status());
@@ -16,9 +18,14 @@ async fn main() {
             result = lines.next_line() => {
                 match result {
                     Ok(Some(line)) => {
-                        socket.send(Message::Text(line)).await.expect("Failed to send message");
+                        match line.as_str() {
+                            EXIT_WS => break,
+                            _ => {
+                                socket.send(Message::Text(line)).await.expect("Failed to send message");
+                            }
+                        }
                     }
-                    Ok(None) => break, // End of input
+                    Ok(None) => break,
                     Err(e) => {
                         eprintln!("Error reading line: {}", e);
                         break;
