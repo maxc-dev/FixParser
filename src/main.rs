@@ -1,18 +1,13 @@
-mod fix_file_reader;
-mod fix_message_parser;
-mod fix_message;
-mod new_order;
-mod order_cancel_request;
-mod execution_report;
-mod order_status_request;
 mod client;
+mod messaging;
+mod fix;
 
-use crate::execution_report::ExecutionReport;
-use crate::fix_message::FixMessage;
-use crate::fix_message_parser::FixMessageParser;
-use crate::new_order::NewOrder;
-use crate::order_cancel_request::OrderCancelRequest;
-use crate::order_status_request::OrderStatusRequest;
+use crate::fix::fix_message::FixMessage;
+use crate::fix::fix_message_parser::FixMessageParser;
+use crate::fix::messages::new_order::NewOrder;
+use crate::fix::messages::execution_report::ExecutionReport;
+use crate::fix::messages::order_cancel_request::OrderCancelRequest;
+use crate::fix::messages::order_status_request::OrderStatusRequest;
 use crate::FixMessageParseResponse::{Success, UnknownMessageType};
 
 use axum::{routing::{post, get}, Router, {response::IntoResponse}, {extract::ws::{WebSocket, WebSocketUpgrade}}};

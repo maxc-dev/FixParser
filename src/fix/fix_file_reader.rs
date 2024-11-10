@@ -1,5 +1,5 @@
-use crate::fix_message::FixMessage;
-use crate::fix_message_parser::FixMessageParser;
+use crate::fix::fix_message::FixMessage;
+use crate::fix::fix_message_parser::FixMessageParser;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use crate::execution_report::ExecutionReport;
-use crate::new_order::NewOrder;
-use crate::order_cancel_request::OrderCancelRequest;
-use crate::order_status_request::OrderStatusRequest;
+use crate::fix::messages::execution_report::ExecutionReport;
+use crate::fix::messages::new_order::NewOrder;
+use crate::fix::messages::order_cancel_request::OrderCancelRequest;
+use crate::fix::messages::order_status_request::OrderStatusRequest;
 
 pub enum FixMessage {
     NewOrder(NewOrder),

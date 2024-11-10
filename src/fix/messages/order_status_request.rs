@@ -1,4 +1,4 @@
-use crate::fix_message::parse_field;
+use crate::fix::fix_message::parse_field;
 use std::collections::HashMap;
 
 #[derive(Debug)]
