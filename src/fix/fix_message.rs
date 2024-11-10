@@ -4,6 +4,7 @@ use crate::fix::messages::new_order::NewOrder;
 use crate::fix::messages::order_cancel_request::OrderCancelRequest;
 use crate::fix::messages::order_status_request::OrderStatusRequest;
 
+#[derive(Debug)]
 pub enum FixMessage {
     NewOrder(NewOrder),
     ExecutionReport(ExecutionReport),

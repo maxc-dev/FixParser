@@ -1,20 +1,19 @@
-mod client;
-mod messaging;
+mod ws_client;
 mod fix;
+mod oms;
 
+use oms::order_management_system::OrderManagementSystem;
+use std::fmt::Debug;
 use crate::fix::fix_message::FixMessage;
 use crate::fix::fix_message_parser::FixMessageParser;
-use crate::fix::messages::new_order::NewOrder;
-use crate::fix::messages::execution_report::ExecutionReport;
-use crate::fix::messages::order_cancel_request::OrderCancelRequest;
-use crate::fix::messages::order_status_request::OrderStatusRequest;
-use crate::FixMessageParseResponse::{Success, UnknownMessageType};
 
-use axum::{routing::{post, get}, Router, {response::IntoResponse}, {extract::ws::{WebSocket, WebSocketUpgrade}}};
+use axum::{routing::{get, post}, Router, extract::ws::{WebSocket, WebSocketUpgrade}, response::IntoResponse};
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
+use axum::extract::ws::Message;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use futures_util::{SinkExt, StreamExt};
 
 const FIX_TAG: &str = "fix";
 
@@ -36,30 +35,49 @@ struct ApiDoc;
         (status = 200, description = "FIX message received")
     )
 )]
-async fn post_fix_msg(body: String) -> String {
-    let result = handle_fix_str(body.as_str());
-    format!("Parse response: {:?}", result)
+async fn post_fix_msg(body: String, sender: Sender<FixMessage>) -> String {
+    let parsed_message = FixMessageParser::parse_message(&body);
 
+    if sender.send(parsed_message).is_err() {
+        return "Failed to send message to channel".to_string();
+    }
+    "FIX message received and sent to channel".to_string()
 }
 
-async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_websocket)
+async fn ws_handler(ws: WebSocketUpgrade, sender: Sender<FixMessage>) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| ws_fix_msg(socket, sender))
 }
 
-async fn handle_websocket(mut socket: WebSocket) {
+async fn ws_fix_msg(mut socket: WebSocket, sender: Sender<FixMessage>) {
     while let Some(Ok(message)) = socket.next().await {
-        if let axum::extract::ws::Message::Text(text) = message {
-            let parsed_message = handle_fix_str(&text);
-            socket.send(axum::extract::ws::Message::Text(format!("FIX Parser Response: {:?}", parsed_message))).await.unwrap();
+        if let Message::Text(text) = message {
+            let parsed_message = FixMessageParser::parse_message(&text);
+
+            if sender.send(parsed_message).is_err() {
+                eprintln!("Failed to send message to channel");
+            }
+
+            if socket.send(Message::Text("FIX message received and sent to channel".to_string())).await.is_err() {
+                break;
+            }
         }
     }
 }
 
 #[tokio::main]
 async fn main() {
+    let (sender, receiver): (Sender<FixMessage>, Receiver<FixMessage>) = unbounded();
+
+    let oms = OrderManagementSystem::new(receiver);
+    tokio::spawn(async move {
+        oms.listen_for_orders();
+    });
+
+    let post_sender = sender.clone();
+    let ws_sender = sender.clone();
     let app = Router::new()
-        .route("/api/v1/fix", post(post_fix_msg))
-        .route("/ws", get(ws_handler))
+        .route("/api/v1/fix", post(move |body| post_fix_msg(body, post_sender)))
+        .route("/ws", get(move |ws| ws_handler(ws, ws_sender)))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8081));
@@ -69,44 +87,4 @@ async fn main() {
         .serve(app.into_make_service())
         .await
         .unwrap();
-}
-
-#[derive(Debug)]
-enum FixMessageParseResponse {
-    Success,
-    UnknownMessageType,
-}
-
-fn handle_fix_str(msg: &str) -> FixMessageParseResponse {
-    match FixMessageParser::parse_message(msg) {
-        FixMessage::NewOrder(new_order) => handle_new_order(new_order),
-        FixMessage::ExecutionReport(execution_report) => handle_execution_report(execution_report),
-        FixMessage::OrderCancelRequest(order_cancel_request) => handle_order_cancel_request(order_cancel_request),
-        FixMessage::OrderStatusRequest(order_status_request) => handle_order_status_request(order_status_request),
-        FixMessage::Unknown => UnknownMessageType
-    }
-}
-
-fn handle_new_order(new_order: NewOrder) -> FixMessageParseResponse {
-    println!("Handling NewOrder: {:?}", new_order.cl_ord_id);
-    println!(" -> {:?}", new_order);
-    Success
-}
-
-fn handle_execution_report(execution_report: ExecutionReport) -> FixMessageParseResponse {
-    println!("Handling ExecutionReport: {:?}", execution_report.cl_ord_id);
-    println!(" -> {:?}", execution_report);
-    Success
-}
-
-fn handle_order_cancel_request(order_cancel_request: OrderCancelRequest) -> FixMessageParseResponse {
-    println!("Handling OrderCancelRequest: {:?}", order_cancel_request.cl_ord_id);
-    println!(" -> {:?}", order_cancel_request);
-    Success
-}
-
-fn handle_order_status_request(order_status_request: OrderStatusRequest) -> FixMessageParseResponse {
-    println!("Handling OrderStatusRequest: {:?}", order_status_request.cl_ord_id);
-    println!(" -> {:?}", order_status_request);
-    Success
 }
